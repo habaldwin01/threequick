@@ -42,10 +42,12 @@ class CameraContext:
     def __init__(self,
                  position: list[float],
                  rotation: list[float],
+                 fov: float,
                  surface: pygame.Surface):
         self.position = position
         self.rotation = rotation
         self.screen_size = (1,1)
+        self.fov = fov
         self.frustum_width = 1
         self.frustum_height = 1
         self.surface = surface
@@ -54,13 +56,13 @@ class CameraContext:
         self.screen_size = (self.surface.get_width(), self.surface.get_height())
 
         self.min_render_distance = 0.1
-        self.frustum_width = self.min_render_distance
+        self.frustum_width = self.min_render_distance * math.radians(self.fov)
         self.frustum_height = self.frustum_width * (self.screen_size[1] / self.screen_size[0])
         #self.projection_matrix = [[nx/2,  0,     0,     (nx-1)/2],
         #                       [0,     ny/2,  0,     (ny-1)/2],
         #                       [0,     0,     1/2,   1/2     ]]
 
-        f = 4 # far
+        f = 10 # far
         n = self.min_render_distance # near
         r = self.frustum_width # width
         t = self.frustum_height # height
@@ -105,28 +107,27 @@ class Object3d(Renderable):
                  vertices: list[list[float]],
                  edges: list[list[int]],
                  faces: list[list[int]]) -> None:
-        self.__mod_vertices = vertices
-        self.__mod_edges = edges
-        self.__mod_faces = faces
+        self.__mod_vertices = [None] * len(vertices)
+        #self.__mod_edges = edges
+        #self.__mod_faces = faces
         self.vertices = vertices
         self.edges = edges
         self.faces = faces
-        self.position = [0,0,0]
-        self.rotation_matrix = [[1, 0, 0, 0],
-                                [0, 1, 0, 0],
-                                [0, 0, 1, 0],
-                                [0, 0, 0, 1]]
+        self.position = [0, 0, 0]
+        self.rotation_matrix = pry_rot_to_4x4(0, 0, 0)
+        self.update_vertex_cache()
 
     def set_rotation(self, pitch, roll, yaw):
         self.rotation_matrix = pry_rot_to_4x4(pitch, roll, yaw)
-
-        for vindex, vertex in enumerate(self.vertices):
-            self.__mod_vertices[vindex] = transform_3d_point_4x4_mat(self.rotation_matrix, vertex)
+        self.update_vertex_cache()
 
     def set_position(self, x, y, z):
         self.position = [x, y, z]
+        self.update_vertex_cache()
 
+    def update_vertex_cache(self):
         for vindex, vertex in enumerate(self.vertices):
+            vertex = transform_3d_point_4x4_mat(self.rotation_matrix, vertex)
             self.__mod_vertices[vindex] = [vertex[0] + self.position[0], vertex[1] + self.position[1], vertex[2] + self.position[2]]
 
     def draw(self, camera_context: CameraContext) -> None:

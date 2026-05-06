@@ -5,7 +5,7 @@ authors = [
   { name="Hannah Baldwin", email="contact@hannahbaldwin.net" },
 ]
 license = { text="GPL-3.0" }
-description = "A simple python library for creating 3D visualisations without OpenGL."
+description = "A simple python library for creating 3D visualisations"
 readme = "README.md"
 requires-python = ">=3.6"
 classifiers = [
