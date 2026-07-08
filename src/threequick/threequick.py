@@ -1,6 +1,11 @@
 import pygame
+import pygame.font
 import numpy as np
 import math
+import random
+
+pygame.font.init()
+sans_font = pygame.font.Font(pygame.font.get_default_font(), 36)
 
 def transform_3d_point_4x4_mat(matrix, point):
     # Convert to homogeneous coordinates
@@ -56,7 +61,7 @@ class CameraContext:
         self.screen_size = (self.surface.get_width(), self.surface.get_height())
 
         self.min_render_distance = 0.1
-        self.frustum_width = self.min_render_distance * math.radians(self.fov)
+        self.frustum_width = self.min_render_distance / (math.pi - math.radians(self.fov))
         self.frustum_height = self.frustum_width * (self.screen_size[1] / self.screen_size[0])
         #self.projection_matrix = [[nx/2,  0,     0,     (nx-1)/2],
         #                       [0,     ny/2,  0,     (ny-1)/2],
@@ -74,6 +79,8 @@ class CameraContext:
                                   [0, b, 0, 0],
                                   [0, 0, c, d],
                                   [0, 0,-1, 0]]
+
+        # From https://songho.ca/opengl/gl_transform.html
 
         self.translation_matrix = [[1, 0, 0, self.position[0]],
                                    [0, 1, 0, self.position[1]],
@@ -105,17 +112,30 @@ class Renderable():
 class Object3d(Renderable):
     def __init__(self,
                  vertices: list[list[float]],
-                 edges: list[list[int]],
-                 faces: list[list[int]]) -> None:
+                 faces: list[list[int]],
+                 color: list[int] = None) -> None:
         self.__mod_vertices = [None] * len(vertices)
         #self.__mod_edges = edges
         #self.__mod_faces = faces
         self.vertices = vertices
-        self.edges = edges
         self.faces = faces
+        self.face_color = []
         self.position = [0, 0, 0]
+        self.color = color
         self.rotation_matrix = pry_rot_to_4x4(0, 0, 0)
         self.update_vertex_cache()
+        edges = set()
+        for face in self.faces:
+            edges.add((face[0], face[1]))
+            edges.add((face[1], face[2]))
+            edges.add((face[2], face[0]))
+        self.edges = list(edges)
+        if self.color is None:
+            for face in self.faces:
+                self.face_color.append([random.randint(0,255),random.randint(0,255),random.randint(0,255)])
+
+            for face_idx in range(len(self.faces)):
+                print(str(self.faces[face_idx]) + " => " + str(self.face_color[face_idx]))
 
     def set_rotation(self, pitch, roll, yaw):
         self.rotation_matrix = pry_rot_to_4x4(pitch, roll, yaw)
@@ -130,45 +150,67 @@ class Object3d(Renderable):
             vertex = transform_3d_point_4x4_mat(self.rotation_matrix, vertex)
             self.__mod_vertices[vindex] = [vertex[0] + self.position[0], vertex[1] + self.position[1], vertex[2] + self.position[2]]
 
-    def draw(self, camera_context: CameraContext) -> None:
+    def draw_wireframe(self, camera_context: CameraContext) -> None:
         scr_center = (camera_context.screen_size[0] / 2, camera_context.screen_size[1] / 2)
         tpf = camera_context.transform_point
         for edge in self.edges:
             p1 = tpf(self.__mod_vertices[edge[0]])
             p2 = tpf(self.__mod_vertices[edge[1]])
             if p1 is not None and p2 is not None:
-                pygame.draw.line(camera_context.surface, (255, 255, 255), p1, p2)
+                pygame.draw.line(camera_context.surface, self.color, p1, p2)
+
+    def draw(self, camera_context: CameraContext) -> None:
+        scr_center = (camera_context.screen_size[0] / 2, camera_context.screen_size[1] / 2)
+        tpf = camera_context.transform_point
+        for idx, face in enumerate(self.faces):
+            poly_points = [tpf(self.__mod_vertices[face[0]]),
+                    tpf(self.__mod_vertices[face[1]]),
+                    tpf(self.__mod_vertices[face[2]])]
+
+            dir_sum = 0
+            for edgeidx in range(3):
+                p1 = poly_points[edgeidx]
+                p2 = poly_points[(edgeidx + 1) % 3]
+                dir_sum += (p2[0] - p1[0]) * (p2[1] + p1[1])
+            backface_cull = dir_sum < 0
+
+            #if not backface_cull:
+            if self.color is None:
+                if backface_cull:
+                    pygame.draw.lines(camera_context.surface, self.face_color[idx], True, poly_points)
+                else:
+                    pygame.draw.polygon(camera_context.surface, self.face_color[idx], poly_points)
+
+
+                for ptidx in range(3):
+                    text_surface = sans_font.render(str(face[ptidx]), False, (255,255,255))
+                    camera_context.surface.blit(text_surface, poly_points[ptidx])
+            else:
+                if not backface_cull:
+                    pygame.draw.polygon(camera_context.surface, self.color, poly_points)
+
 
 class Cube(Object3d):
-    edges: list[list[int]] = [
-        [0, 1],
-        [1, 2],
-        [2, 3],
-        [3, 0],
-        [4, 5],
-        [5, 6],
-        [6, 7],
-        [7, 4],
-        [0, 4],
-        [1, 5],
-        [2, 6],
-        [3, 7]
-    ]
     faces: list[list[int]] = [
-        [0, 1, 2],
-        [1, 2, 3],
-        [4, 5, 6],
-        [5, 6, 7],
-        [0, 1, 5],
-        [1, 5, 4],
-        [1, 2, 6],
-        [2, 6, 5],
-        [2, 3, 7],
-        [3, 7, 6],
-        [3, 0, 4],
-        [0, 4, 7]
+        [0,1,2],
+        [0,2,3],
+
+        [4,7,6],
+        [6,5,4],
+
+        [5,2,1],
+        [6,2,5],
+
+        [5,1,4],
+        [4,1,0],
+
+        [7,0,3],
+        [4,0,7],
+
+        [7,3,6],
+        [6,3,2]
     ]
-    def __init__(self, size) -> None:
+    def __init__(self, size, color = None) -> None:
         size = size/2
         vertices: list[list[float]] = [
             [-size, -size, -size],
@@ -180,17 +222,17 @@ class Cube(Object3d):
             [size, size, size],
             [-size, size, size]
         ]
-        super().__init__(vertices, Cube.edges, Cube.faces)
+        super().__init__(vertices, Cube.faces, color)
 
-class Sphere(Object3d):
-    def __init__(self, n_meridians, n_parallels, diameter) -> None:
+class Ellipsoid(Object3d):
+    def __init__(self, n_meridians, n_parallels, diameter, flattening, color = None) -> None:
+        compression_factor = 1 - flattening
         radius = diameter/2
-        vertices = [[0,0,radius],[0,0,-radius]]
-        edges = []
+        vertices = [[0,0,radius * compression_factor],[0,0,-radius * compression_factor]]
         faces = []
         for ipa in range(n_parallels):
             vang = ((ipa + 1) / (n_parallels + 1)) * math.pi
-            vpos = -math.cos(vang) * radius
+            vpos = -math.cos(vang) * radius * compression_factor
             for ime in range(n_meridians):
                 ang = (ime * math.pi * 2) / n_meridians
                 sa = math.sin(ang)
@@ -200,24 +242,30 @@ class Sphere(Object3d):
 
         # bottom cap
         for ime in range(n_meridians):
-            edges.append([1,2+ime])
+            faces.append([1,2+ime,2+((ime+1)%n_meridians)])
 
         # top cap
         for ime in range(n_meridians):
-            edges.append([0,2+ime+(n_meridians * (n_parallels - 1))])
+            bc_offset = (n_meridians * (n_parallels - 1))
+            faces.append([0,2+ime+bc_offset,2+((ime+1)%n_meridians)+bc_offset])
 
         # meridians
         for ipa in range(n_parallels - 1):
             for ime in range(n_meridians):
-                edges.append([2+ime+(n_meridians * (ipa + 1)),2+ime+(n_meridians * ipa)])
+                pass
+                #edges.append([2+ime+(n_meridians * (ipa + 1)),2+ime+(n_meridians * ipa)])
 
         # parallels
         for ipa in range(n_parallels):
             for ime in range(n_meridians):
-                edges.append([2+ime+(n_meridians * ipa),2+((ime + 1)%n_meridians)+(n_meridians * ipa)])
+                pass
+                #edges.append([2+ime+(n_meridians * ipa),2+((ime + 1)%n_meridians)+(n_meridians * ipa)])
 
-        super().__init__(vertices, edges, faces)
+        super().__init__(vertices, faces, color)
 
+class Sphere(Ellipsoid):
+    def __init__(self, n_meridians, n_parallels, diameter, color = None) -> None:
+        super().__init__(n_meridians, n_parallels, diameter, 0, color)
 
 class PointCloud(Renderable):
     def __init__(self, diameter = 2) -> None:
