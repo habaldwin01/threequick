@@ -13,21 +13,21 @@ renderable_objects = []
 tc = Cube(0.2)
 # pitch  roll   yaw
 # x      y      z
-tc.set_rotation(0,0,0)
-tc.set_position(0,0,0)
-#tc.set_rotation(30,10,60)
-#tc.set_position(1,0,0)
+#tc.set_rotation(0,0,0)
+#tc.set_position(0,0,0)
+tc.set_rotation(30,10,60)
+tc.set_position(1,0,0)
 renderable_objects.append(tc)
 
-#sp = Sphere(16, 6+1, 1)
-#renderable_objects.append(sp)
+sp = Sphere(16, 6+1, 1)
+renderable_objects.append(sp)
 
 #point_cloud = PointCloud()
 #renderable_objects.append(point_cloud)
 
 #point_cloud.add_point([0,0.25,0.25], [0,255,0])
 
-cam_dist = 2
+cam_dist = 5
 
 camera_context = CameraContext([0,-cam_dist,0], [70,0,30], 90, window)
 camera_context.position[0] = (math.sin(math.radians(camera_context.rotation[2])) * -cam_dist) * math.sin(math.radians(camera_context.rotation[0]))
@@ -69,8 +69,8 @@ while not done:
     orbital_period_s = 8
     cube_angle = ((pygame.time.get_ticks() / 1000) / orbital_period_s) * 360
 
-    #tc.set_rotation(30,10,60 + cube_angle)
-    #tc.set_position(math.sin(math.radians(cube_angle)),-math.cos(math.radians(cube_angle)),0)
+    tc.set_rotation(30,10,60 + cube_angle)
+    tc.set_position(math.sin(math.radians(cube_angle)),-math.cos(math.radians(cube_angle)),0)
     #tc.set_position(0,0,0)
 
     # Slow rotation of camera

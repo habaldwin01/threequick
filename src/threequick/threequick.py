@@ -3,6 +3,7 @@ import pygame.font
 import numpy as np
 import math
 import random
+from typing import Optional, Union
 
 pygame.font.init()
 sans_font = pygame.font.Font(pygame.font.get_default_font(), 36)
@@ -113,13 +114,14 @@ class Object3d(Renderable):
     def __init__(self,
                  vertices: list[list[float]],
                  faces: list[list[int]],
-                 color: list[int] = None) -> None:
+                 color: Optional[list[int]] = None,
+                 face_color: list[int] = None) -> None:
         self.__mod_vertices = [None] * len(vertices)
         #self.__mod_edges = edges
         #self.__mod_faces = faces
         self.vertices = vertices
         self.faces = faces
-        self.face_color = []
+        self.face_color = face_color
         self.position = [0, 0, 0]
         self.color = color
         self.rotation_matrix = pry_rot_to_4x4(0, 0, 0)
@@ -131,11 +133,13 @@ class Object3d(Renderable):
             edges.add((face[2], face[0]))
         self.edges = list(edges)
         if self.color is None:
-            for face in self.faces:
-                self.face_color.append([random.randint(0,255),random.randint(0,255),random.randint(0,255)])
+            if self.face_color is None:
+                self.face_color = []
+                for face in self.faces:
+                    self.face_color.append([random.randint(0,255),random.randint(0,255),random.randint(0,255)])
 
-            for face_idx in range(len(self.faces)):
-                print(str(self.faces[face_idx]) + " => " + str(self.face_color[face_idx]))
+                for face_idx in range(len(self.faces)):
+                    print(str(self.faces[face_idx]) + " => " + str(self.face_color[face_idx]))
 
     def set_rotation(self, pitch, roll, yaw):
         self.rotation_matrix = pry_rot_to_4x4(pitch, roll, yaw)
@@ -177,14 +181,15 @@ class Object3d(Renderable):
             #if not backface_cull:
             if self.color is None:
                 if backface_cull:
-                    pygame.draw.lines(camera_context.surface, self.face_color[idx], True, poly_points)
+                    #pygame.draw.lines(camera_context.surface, self.face_color[idx], True, poly_points)
+                    pass
                 else:
                     pygame.draw.polygon(camera_context.surface, self.face_color[idx], poly_points)
 
 
-                for ptidx in range(3):
-                    text_surface = sans_font.render(str(face[ptidx]), False, (255,255,255))
-                    camera_context.surface.blit(text_surface, poly_points[ptidx])
+                #for ptidx in range(3):
+                #    text_surface = sans_font.render(str(face[ptidx]), False, (255,255,255))
+                #    camera_context.surface.blit(text_surface, poly_points[ptidx])
             else:
                 if not backface_cull:
                     pygame.draw.polygon(camera_context.surface, self.color, poly_points)
@@ -242,24 +247,23 @@ class Ellipsoid(Object3d):
 
         # bottom cap
         for ime in range(n_meridians):
-            faces.append([1,2+ime,2+((ime+1)%n_meridians)])
+            faces.append([2+ime,1,2+((ime+1)%n_meridians)])
 
         # top cap
         for ime in range(n_meridians):
             bc_offset = (n_meridians * (n_parallels - 1))
             faces.append([0,2+ime+bc_offset,2+((ime+1)%n_meridians)+bc_offset])
 
-        # meridians
+        # panels
         for ipa in range(n_parallels - 1):
             for ime in range(n_meridians):
-                pass
+                pt1 = 2+((ime + 0)%n_meridians)+(n_meridians * ipa)
+                pt2 = 2+((ime + 0)%n_meridians)+(n_meridians * (ipa + 1))
+                pt3 = 2+((ime + 1)%n_meridians)+(n_meridians * ipa)
+                pt4 = 2+((ime + 1)%n_meridians)+(n_meridians * (ipa + 1))
+                faces.append([pt2, pt1, pt3])
+                faces.append([pt2, pt3, pt4])
                 #edges.append([2+ime+(n_meridians * (ipa + 1)),2+ime+(n_meridians * ipa)])
-
-        # parallels
-        for ipa in range(n_parallels):
-            for ime in range(n_meridians):
-                pass
-                #edges.append([2+ime+(n_meridians * ipa),2+((ime + 1)%n_meridians)+(n_meridians * ipa)])
 
         super().__init__(vertices, faces, color)
 
