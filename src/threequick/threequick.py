@@ -117,6 +117,11 @@ class CameraContext:
         self.frustum_width = 1
         self.frustum_height = 1
         self.surface = Surface(screen_size, self)
+        
+    def set_screen_size(self, width, height):
+        self.screen_size = (width, height)
+        self.surface.width = width
+        self.surface.height = height
 
     def update_screenspace(self):
         self.screen_size = (self.surface.get_width(), self.surface.get_height())

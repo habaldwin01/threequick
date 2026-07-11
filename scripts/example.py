@@ -44,8 +44,7 @@ last_ticks = pygame.time.get_ticks()
 
 while not done:
     current_ticks = pygame.time.get_ticks()
-
-    pygame.draw.rect(window, (0, 0, 0), (0, 0, window.get_width(), window.get_height()))
+    camera_context.set_screen_size(window.get_width()/2, window.get_height()/2)
 
     mx, my = pygame.mouse.get_pos()
     for event in pygame.event.get():
@@ -108,8 +107,9 @@ while not done:
     #print(raster.png_data)
     binary_buffer = BytesIO(raster.png_data)
     raster_surface = pygame.image.load(binary_buffer, "frame.png")
-        
-    window.blit(raster_surface, raster_surface.get_rect())
+    raster_surface = pygame.transform.scale(raster_surface, (window.get_width(), window.get_height()))
+    pygame.draw.rect(window, (0, 0, 0), (0, 0, window.get_width(), window.get_height()))
+    window.blit(raster_surface, window.get_rect())
     #exit()
 
     pygame.display.flip()
