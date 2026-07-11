@@ -4,6 +4,8 @@ import numpy as np
 import math
 import random
 from typing import Optional, Union
+import drawsvg as draw
+
 
 pygame.font.init()
 sans_font = pygame.font.Font(pygame.font.get_default_font(), 36)
@@ -44,19 +46,77 @@ def pry_rot_to_4x4(pitch, roll, yaw):
     om = np.matmul(xm, om)
     return om
 
+class RenderableTriangle:
+    def __init__(self, tri_points: list[list[list[float]]], colors: list[list[int]]):
+        self.tri_points = tri_points
+        self.colors = colors
+        self.avg_depth = 0
+        for point in tri_points:
+            self.avg_depth += point[1]
+
+class Object3d:
+    def __init__(self,
+                 vertices: list[list[float]],
+                 faces: list[list[int]],
+                 color: Optional[list[int]] = None,
+                 face_color: list[int] = None) -> None:
+        self.__mod_vertices = [None] * len(vertices)
+        #self.__mod_edges = edges
+        #self.__mod_faces = faces
+        self.vertices = vertices
+        self.faces = faces
+        self.face_color = face_color
+        self.position = [0, 0, 0]
+        self.color = color
+        self.rotation_matrix = pry_rot_to_4x4(0, 0, 0)
+        self.update_vertex_cache()
+        edges = set()
+        for face in self.faces:
+            edges.add((face[0], face[1]))
+            edges.add((face[1], face[2]))
+            edges.add((face[2], face[0]))
+        self.edges = list(edges)
+        if self.color is None:
+            if self.face_color is None:
+                self.face_color = []
+                for face in self.faces:
+                    self.face_color.append([random.randint(0,255),random.randint(0,255),random.randint(0,255)])
+
+                for face_idx in range(len(self.faces)):
+                    print(str(self.faces[face_idx]) + " => " + str(self.face_color[face_idx]))
+
+    def set_rotation(self, pitch, roll, yaw):
+        self.rotation_matrix = pry_rot_to_4x4(pitch, roll, yaw)
+        self.update_vertex_cache()
+
+    def set_position(self, x, y, z):
+        self.position = [x, y, z]
+        self.update_vertex_cache()
+        
+    def get_modified_vertices(self):
+        return self.__mod_vertices
+    
+    def get_faces(self):
+        return self.faces
+
+    def update_vertex_cache(self):
+        for vindex, vertex in enumerate(self.vertices):
+            vertex = transform_3d_point_4x4_mat(self.rotation_matrix, vertex)
+            self.__mod_vertices[vindex] = [vertex[0] + self.position[0], vertex[1] + self.position[1], vertex[2] + self.position[2]]
+
 class CameraContext:
     def __init__(self,
                  position: list[float],
                  rotation: list[float],
                  fov: float,
-                 surface: pygame.Surface):
+                 screen_size: list[float]):
         self.position = position
         self.rotation = rotation
-        self.screen_size = (1,1)
+        self.screen_size = screen_size
         self.fov = fov
         self.frustum_width = 1
         self.frustum_height = 1
-        self.surface = surface
+        self.surface = Surface(screen_size, self)
 
     def update_screenspace(self):
         self.screen_size = (self.surface.get_width(), self.surface.get_height())
@@ -96,103 +156,74 @@ class CameraContext:
     def transform_point(self, point):
         #point = transform_3d_point_4x4_mat(self.model_view_matrix, point)
         proj_point = transform_3d_point_4x4_mat(self.combined_camera_matrix, point)
-        fsc = (proj_point[0], proj_point[1])
-        ssc = ((fsc[0] + 0.5) * self.screen_size[0], (fsc[1] + 0.5) * self.screen_size[1])
+        ssc = ((proj_point[0]) * self.screen_size[0], (proj_point[1]) * self.screen_size[1])
         if proj_point[2] > 0: # Cull points behind camera
-            return ssc
+            return (ssc, proj_point[2])
         else:
             return None
 
-class Renderable():
-    def __init__(self):
-        pass
-
-    def draw(self, camera_context: CameraContext):
-        pass
-
-class Object3d(Renderable):
-    def __init__(self,
-                 vertices: list[list[float]],
-                 faces: list[list[int]],
-                 color: Optional[list[int]] = None,
-                 face_color: list[int] = None) -> None:
-        self.__mod_vertices = [None] * len(vertices)
-        #self.__mod_edges = edges
-        #self.__mod_faces = faces
-        self.vertices = vertices
-        self.faces = faces
-        self.face_color = face_color
-        self.position = [0, 0, 0]
-        self.color = color
-        self.rotation_matrix = pry_rot_to_4x4(0, 0, 0)
-        self.update_vertex_cache()
-        edges = set()
-        for face in self.faces:
-            edges.add((face[0], face[1]))
-            edges.add((face[1], face[2]))
-            edges.add((face[2], face[0]))
-        self.edges = list(edges)
-        if self.color is None:
-            if self.face_color is None:
-                self.face_color = []
-                for face in self.faces:
-                    self.face_color.append([random.randint(0,255),random.randint(0,255),random.randint(0,255)])
-
-                for face_idx in range(len(self.faces)):
-                    print(str(self.faces[face_idx]) + " => " + str(self.face_color[face_idx]))
-
-    def set_rotation(self, pitch, roll, yaw):
-        self.rotation_matrix = pry_rot_to_4x4(pitch, roll, yaw)
-        self.update_vertex_cache()
-
-    def set_position(self, x, y, z):
-        self.position = [x, y, z]
-        self.update_vertex_cache()
-
-    def update_vertex_cache(self):
-        for vindex, vertex in enumerate(self.vertices):
-            vertex = transform_3d_point_4x4_mat(self.rotation_matrix, vertex)
-            self.__mod_vertices[vindex] = [vertex[0] + self.position[0], vertex[1] + self.position[1], vertex[2] + self.position[2]]
-
-    def draw_wireframe(self, camera_context: CameraContext) -> None:
-        scr_center = (camera_context.screen_size[0] / 2, camera_context.screen_size[1] / 2)
-        tpf = camera_context.transform_point
-        for edge in self.edges:
-            p1 = tpf(self.__mod_vertices[edge[0]])
-            p2 = tpf(self.__mod_vertices[edge[1]])
-            if p1 is not None and p2 is not None:
-                pygame.draw.line(camera_context.surface, self.color, p1, p2)
-
-    def draw(self, camera_context: CameraContext) -> None:
-        scr_center = (camera_context.screen_size[0] / 2, camera_context.screen_size[1] / 2)
-        tpf = camera_context.transform_point
-        for idx, face in enumerate(self.faces):
-            poly_points = [tpf(self.__mod_vertices[face[0]]),
-                    tpf(self.__mod_vertices[face[1]]),
-                    tpf(self.__mod_vertices[face[2]])]
+class Surface:
+    def __init__(self, canvas_size: list[int], camera_context: CameraContext):
+        self.width = canvas_size[0]
+        self.height = canvas_size[1]
+        self.tris = []
+        self.camera_context = camera_context
+    
+    def get_width(self):
+        return self.width    
+    
+    def get_height(self):
+        return self.height
+    
+    def draw(self, obj: Object3d):
+        scr_center = (self.width / 2, self.height / 2)
+        tpf = self.camera_context.transform_point
+        obj_mod_vtx = obj.get_modified_vertices()
+        for idx, face in enumerate(obj.get_faces()):
+            poly_points = [tpf(obj_mod_vtx[face[0]]),
+                    tpf(obj_mod_vtx[face[1]]),
+                    tpf(obj_mod_vtx[face[2]])]
 
             dir_sum = 0
             for edgeidx in range(3):
-                p1 = poly_points[edgeidx]
-                p2 = poly_points[(edgeidx + 1) % 3]
+                p1 = poly_points[edgeidx][0]
+                p2 = poly_points[(edgeidx + 1) % 3][0]
                 dir_sum += (p2[0] - p1[0]) * (p2[1] + p1[1])
             backface_cull = dir_sum < 0
 
-            #if not backface_cull:
-            if self.color is None:
+
+            rt = None
+            if obj.color is None:
                 if backface_cull:
-                    #pygame.draw.lines(camera_context.surface, self.face_color[idx], True, poly_points)
                     pass
                 else:
-                    pygame.draw.polygon(camera_context.surface, self.face_color[idx], poly_points)
-
-
-                #for ptidx in range(3):
-                #    text_surface = sans_font.render(str(face[ptidx]), False, (255,255,255))
-                #    camera_context.surface.blit(text_surface, poly_points[ptidx])
+                    rt = RenderableTriangle(poly_points, (obj.face_color[idx], obj.face_color[idx], obj.face_color[idx]))
             else:
                 if not backface_cull:
-                    pygame.draw.polygon(camera_context.surface, self.color, poly_points)
+                    rt = RenderableTriangle(poly_points, (obj.color[idx], obj.color[idx], obj.color[idx]))
+                    
+            if rt is not None:
+                self.tris.append(rt)
+    
+    def to_drawsvg_obj(self):
+        d = draw.Drawing(self.width, self.height, origin='center')
+        
+        self.tris.sort(key=lambda x: x.avg_depth, reverse=True)
+        
+        for tri in self.tris:
+            d.append(draw.Lines(
+                        tri.tri_points[0][0][0], tri.tri_points[0][0][1],
+                        tri.tri_points[1][0][0], tri.tri_points[1][0][1],
+                        tri.tri_points[2][0][0], tri.tri_points[2][0][1],
+                        close=True,
+                fill="#{:02X}{:02X}{:02X}".format(*tri.colors[0]),
+                stroke='black'))
+            
+        return d
+    
+    def clear(self):
+        del self.tris
+        self.tris = []
 
 
 class Cube(Object3d):
@@ -271,27 +302,3 @@ class Sphere(Ellipsoid):
     def __init__(self, n_meridians, n_parallels, diameter, color = None) -> None:
         super().__init__(n_meridians, n_parallels, diameter, 0, color)
 
-class PointCloud(Renderable):
-    def __init__(self, diameter = 2) -> None:
-        self.diameter = diameter
-        self.points = []
-        self.__mod_points = []
-        self.colors = []
-
-    def add_point(self, point, color):
-        self.points.append((point, len(self.colors)))
-        self.__mod_points = self.points
-        self.colors.append(color)
-
-    def draw(self, camera_context: CameraContext) -> None:
-        #pixel_array = pygame.PixelArray(camera_context.surface)
-
-        scr_center = (camera_context.screen_size[0] / 2, camera_context.screen_size[1] / 2)
-
-        for point in self.points:
-            p1 = camera_context.transform_point(point[0])
-            #pixel_array[p1[0], p1[1]] = self.colors[point[1]]
-            pygame.draw.circle(camera_context.surface, self.colors[point[1]], p1, self.diameter/2)
-        #pixel_array[start_x:end_x, start_y:end_y] = color
-
-        #pixel_array.close()

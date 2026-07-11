@@ -1,2 +1,2 @@
 # threequick
-A simple python library for creating 3D visualisations.
+A Python library for projecting 3D scenes into flat SVG files.

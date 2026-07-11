@@ -1,7 +1,8 @@
 import pygame
 import numpy as np
 import math
-from threequick import CameraContext, Object3d, Cube, Sphere, PointCloud
+from io import BytesIO
+from threequick import CameraContext, Object3d, Cube, Sphere
 
 
 window = pygame.display.set_mode((1280, 720), pygame.RESIZABLE)
@@ -29,7 +30,8 @@ renderable_objects.append(sp)
 
 cam_dist = 5
 
-camera_context = CameraContext([0,-cam_dist,0], [70,0,30], 90, window)
+screen_size = (1280, 720)
+camera_context = CameraContext([0,-cam_dist,0], [70,0,30], 90, screen_size)
 camera_context.position[0] = (math.sin(math.radians(camera_context.rotation[2])) * -cam_dist) * math.sin(math.radians(camera_context.rotation[0]))
 camera_context.position[1] = (math.cos(math.radians(camera_context.rotation[2])) * -cam_dist) * math.sin(math.radians(camera_context.rotation[0]))
 camera_context.position[2] = math.cos(math.radians(camera_context.rotation[0])) * -cam_dist
@@ -86,12 +88,29 @@ while not done:
     last_ticks = current_ticks
 
     camera_context.update_screenspace()
+    
+    camera_context.surface.clear()
+    
     for ro in renderable_objects:
-        ro.draw(camera_context)
+        camera_context.surface.draw(ro)
 
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             done = True
+            
+            
+    svg_drawing = camera_context.surface.to_drawsvg_obj()
+    
+    #svg_drawing.save_png("frame.png")
+    #raster_surface = pygame.image.load("frame.png")
+    
+    raster = svg_drawing.rasterize()
+    #print(raster.png_data)
+    binary_buffer = BytesIO(raster.png_data)
+    raster_surface = pygame.image.load(binary_buffer, "frame.png")
+        
+    window.blit(raster_surface, raster_surface.get_rect())
+    #exit()
 
     pygame.display.flip()
 
