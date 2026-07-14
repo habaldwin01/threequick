@@ -2,7 +2,7 @@ import pygame
 import numpy as np
 import math
 from io import BytesIO
-from threequick import CameraContext, Object3d, Cube, Sphere, Line3d
+from threequick import CameraContext, Object3d, Cube, Sphere, Line3d, Text3d
 
 
 window = pygame.display.set_mode((1280, 720), pygame.RESIZABLE)
@@ -23,6 +23,8 @@ renderable_objects.append(tc)
 sp = Sphere(16, 6+1, 1)
 renderable_objects.append(sp)
 
+tx = Text3d([0,0,0.75], "Hello world!")
+renderable_objects.append(tx)
 
 # Set up lines for gizmo
 gizmo_stroke_width = 3

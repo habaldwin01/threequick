@@ -165,6 +165,43 @@ class Line3d:
         for vertex in self.vertices:
             self.vertex_color.append([random.randint(0,255),random.randint(0,255),random.randint(0,255)])
 
+
+class Text3d:
+    def __init__(self,
+                 position: list[float],
+                 text: str,
+                 size: int = 24,
+                 color: Optional[list[int]] = None,
+                 outline_color: Optional[list[int]] = None) -> None:
+
+        self.position = position
+        self.text = text
+        self.size = size
+        self.color = color
+        self.outline_color = outline_color
+
+        if self.color is None:
+            if self.outline_color is None:
+                self.set_random_color()
+
+    def set_random_color(self):
+        self.color = [random.randint(0,255),random.randint(0,255),random.randint(0,255)]
+
+    def apply_tpf(self, tpf):
+        self.pos2d = tpf(self.position)
+        self.min_cam_dist = self.pos2d[1]
+
+    def get_svg_components(self):
+        if self.outline_color is None:
+            sc = "none"
+        else:
+            sc = "#{:02X}{:02X}{:02X}".format(*self.outline_color)
+        if self.color is None:
+            fc = "none"
+        else:
+            fc = "#{:02X}{:02X}{:02X}".format(*self.color)
+        return draw.Text(self.text, font_size=self.size, x=self.pos2d[0][0], y=self.pos2d[0][1], stroke=sc, fill=fc, text_anchor="middle", dominant_baseline="middle")
+
 class CameraContext:
     def __init__(self,
                  position: list[float],
@@ -293,9 +330,11 @@ class Surface:
                                 screen_space_displace = obj.screen_space_displace)
             
             self.renderables.append(rl)
-            
+        elif isinstance(obj, Text3d):
+            obj.apply_tpf(tpf)
+            self.renderables.append(obj)
         else:
-            raise RuntimeException("Not a valid drawable type, must be one of: [Object3d, Line3d]")
+            raise RuntimeException("Not a valid drawable type, must be one of: [Object3d, Line3d, Text3d]")
     
     def to_drawsvg_obj(self):
         d = draw.Drawing(self.width, self.height, origin='center')
@@ -337,6 +376,8 @@ class Surface:
                             stroke_width=renderable.stroke_width,
                             stroke_linecap='round',
                             fill='none'))
+            elif isinstance(renderable, Text3d):
+                d.append(renderable.get_svg_components())
             
             
         return d
