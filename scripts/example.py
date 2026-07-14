@@ -23,7 +23,8 @@ renderable_objects.append(tc)
 sp = Sphere(16, 6+1, 1)
 renderable_objects.append(sp)
 
-tx = Text3d([0,0,0.75], "Hello world!")
+tx = Text3d([0,0,0], "Hello world!")
+tx.fixed_depth = -1 # Always render in front
 renderable_objects.append(tx)
 
 # Set up lines for gizmo

@@ -46,25 +46,15 @@ def pry_rot_to_4x4(pitch, roll, yaw):
     om = np.matmul(xm, om)
     return om
 
-class RenderableTriangle:
-    def __init__(self, tri_points: list[list[list[float]]], colors: list[list[int]]):
-        self.tri_points = tri_points
-        self.colors = colors
-        #self.avg_depth = 0
-        self.min_cam_dist = []
-        for point in tri_points:
-            #self.avg_depth += point[1]
-            self.min_cam_dist.append(point[1])
-        self.min_cam_dist = min(self.min_cam_dist)
-        #self.avg_depth = self.avg_depth / 3
-
 class Object3d:
     def __init__(self,
                  vertices: list[list[float]],
                  faces: list[list[int]],
                  color: Optional[list[int]] = None,
                  face_color: Optional[list[int]] = None,
-                 vertex_color: Optional[list[int]] = None) -> None:
+                 vertex_color: Optional[list[int]] = None,
+                 filled: bool = True,
+                 stroke_width: int = 0) -> None:
         self.__mod_vertices = [None] * len(vertices)
         #self.__mod_edges = edges
         #self.__mod_faces = faces
@@ -76,6 +66,10 @@ class Object3d:
         self.color = color
         self.rotation_matrix = pry_rot_to_4x4(0, 0, 0)
         self.update_vertex_cache()
+        self.filled = filled
+        self.stroke_width = stroke_width
+        self.__avg_depth = 0
+        self.fixed_depth = None
         edges = set()
         for face in self.faces:
             edges.add((face[0], face[1]))
@@ -86,6 +80,8 @@ class Object3d:
             if self.face_color is None:
                 if self.vertex_color is None:
                     self.set_random_face_color()
+
+
                 
     def set_random_face_color(self):
         self.face_color = []
@@ -116,27 +112,49 @@ class Object3d:
             vertex = transform_3d_point_4x4_mat(self.rotation_matrix, vertex)
             self.__mod_vertices[vindex] = [vertex[0] + self.position[0], vertex[1] + self.position[1], vertex[2] + self.position[2]]
 
-class RenderableLine:
-    def __init__(self, 
-                 line_points: list[list[list[float]]], 
-                 colors: list[list[int]],
-                 start_arrow: int = 0, 
-                 end_arrow: int = 0, 
-                 stroke_width: int = 1, 
-                 screen_space_displace: list[int] = [0,0]) -> None:
-        self.line_points = line_points
-        self.colors = colors
-        #self.avg_depth = 0
-        self.min_cam_dist = []
-        for point in self.line_points:
-            #self.avg_depth += point[1]
-            self.min_cam_dist.append(point[1])
-        self.min_cam_dist = min(self.min_cam_dist)
-        #self.avg_depth = self.avg_depth / len(self.line_points)
-        self.start_arrow = start_arrow
-        self.end_arrow = end_arrow
-        self.stroke_width = stroke_width
-        self.screen_space_displace = screen_space_displace
+    def apply_tpf(self, tpf):
+        self.__transformed_tris = []
+
+        for idx, face in enumerate(self.faces):
+            poly_points = [tpf(self.__mod_vertices[face[0]]),
+                    tpf(self.__mod_vertices[face[1]]),
+                    tpf(self.__mod_vertices[face[2]])]
+
+            dir_sum = 0
+            for edgeidx in range(3):
+                p1 = poly_points[edgeidx][0]
+                p2 = poly_points[(edgeidx + 1) % 3][0]
+                dir_sum += (p2[0] - p1[0]) * (p2[1] + p1[1])
+            backface_cull = dir_sum < 0
+
+
+            rt = None
+            if self.color is None:
+                if backface_cull:
+                    pass
+                else:
+                    rt = (poly_points, (self.face_color[idx], self.face_color[idx], self.face_color[idx]))
+            else:
+                if not backface_cull:
+                    rt = (poly_points, (self.color[idx], self.color[idx], self.color[idx]))
+
+            if rt is not None:
+                self.__transformed_tris.append(rt)
+
+    def get_svg_components(self):
+        poly_out = []
+        for tri in self.__transformed_tris:
+            tri_points = tri[0]
+            tri_colors = tri[1]
+            depth = min(tri_points[0][1], tri_points[1][1], tri_points[2][1])
+            poly_out.append((draw.Lines(
+                tri_points[0][0][0], tri_points[0][0][1],
+                tri_points[1][0][0], tri_points[1][0][1],
+                tri_points[2][0][0], tri_points[2][0][1],
+                close=True,
+                fill="#{:02X}{:02X}{:02X}".format(*tri_colors[0]),
+                stroke='none'), depth))
+        return poly_out
 
 class Line3d:
     def __init__(self,
@@ -155,6 +173,7 @@ class Line3d:
         self.start_arrow = start_arrow
         self.stroke_width = stroke_width
         self.screen_space_displace = screen_space_displace
+        self.fixed_depth = None
         
         if self.color is None:
             if self.vertex_color is None:
@@ -164,6 +183,43 @@ class Line3d:
         self.vertex_color = []
         for vertex in self.vertices:
             self.vertex_color.append([random.randint(0,255),random.randint(0,255),random.randint(0,255)])
+
+    def apply_tpf(self, tpf):
+        self.__transformed_points = []
+        for vertex in self.vertices:
+            self.__transformed_points.append(tpf(vertex))
+
+    def get_svg_components(self):
+        poly_out = []
+        if self.fixed_depth is None:
+            depth = min(self.__transformed_points, key=lambda p: p[1])[1]
+        else:
+            depth = self.fixed_depth
+        pts = []
+        for point in self.__transformed_points:
+            pts.append(point[0][0] + self.screen_space_displace[0])
+            pts.append(point[0][1] + self.screen_space_displace[1])
+        poly_out.append((draw.Lines(*pts,
+                    close=False,
+                    stroke="#{:02X}{:02X}{:02X}".format(*self.color),
+                    stroke_width=self.stroke_width,
+                    stroke_linecap='round',
+                    fill='none'), depth))
+        if self.end_arrow > 0:
+            end_pt = [pts[-2], pts[-1]]
+            end_vec = [pts[-2] - pts[-4], pts[-1] - pts[-3]]
+            vec_len = math.sqrt((end_vec[0]**2) + (end_vec[1]**2))
+            end_perp_vec = [end_vec[1]/vec_len/2, -end_vec[0]/vec_len/2]
+            end_vec = [end_vec[0]/vec_len, end_vec[1]/vec_len]
+            end_lhs = [end_pt[0] + ((end_perp_vec[0] - end_vec[0]) * self.end_arrow), end_pt[1] + ((end_perp_vec[1] - end_vec[1]) * self.end_arrow)]
+            end_rhs = [end_pt[0] + (-(end_perp_vec[0] + end_vec[0]) * self.end_arrow), end_pt[1] + (-(end_perp_vec[1] + end_vec[1]) * self.end_arrow)]
+            poly_out.append((draw.Lines(*end_pt, *end_rhs, *end_lhs,
+                    close=True,
+                    stroke="#{:02X}{:02X}{:02X}".format(*self.color),
+                    stroke_width=self.stroke_width,
+                    stroke_linecap='round',
+                    fill='none'), depth))
+        return poly_out
 
 
 class Text3d:
@@ -179,6 +235,7 @@ class Text3d:
         self.size = size
         self.color = color
         self.outline_color = outline_color
+        self.fixed_depth = None
 
         if self.color is None:
             if self.outline_color is None:
@@ -189,7 +246,10 @@ class Text3d:
 
     def apply_tpf(self, tpf):
         self.pos2d = tpf(self.position)
-        self.min_cam_dist = self.pos2d[1]
+        if self.fixed_depth is None:
+            self.__cam_dist = self.pos2d[1]
+        else:
+            self.__cam_dist = self.fixed_depth
 
     def get_svg_components(self):
         if self.outline_color is None:
@@ -200,7 +260,7 @@ class Text3d:
             fc = "none"
         else:
             fc = "#{:02X}{:02X}{:02X}".format(*self.color)
-        return draw.Text(self.text, font_size=self.size, x=self.pos2d[0][0], y=self.pos2d[0][1], stroke=sc, fill=fc, text_anchor="middle", dominant_baseline="middle")
+        return [(draw.Text(self.text, font_size=self.size, x=self.pos2d[0][0], y=self.pos2d[0][1], stroke=sc, fill=fc, text_anchor="middle", dominant_baseline="middle", font_weight="bold"), self.__cam_dist)]
 
 class CameraContext:
     def __init__(self,
@@ -278,107 +338,21 @@ class Surface:
     def get_height(self):
         return self.height
     
-    def draw(self, obj: Union[Object3d, Line3d]):
-        scr_center = (self.width / 2, self.height / 2)
-        tpf = self.camera_context.transform_point
-        
-        if isinstance(obj, Object3d):
-            obj_mod_vtx = obj.get_modified_vertices()
-            for idx, face in enumerate(obj.get_faces()):
-                poly_points = [tpf(obj_mod_vtx[face[0]]),
-                        tpf(obj_mod_vtx[face[1]]),
-                        tpf(obj_mod_vtx[face[2]])]
-
-                dir_sum = 0
-                for edgeidx in range(3):
-                    p1 = poly_points[edgeidx][0]
-                    p2 = poly_points[(edgeidx + 1) % 3][0]
-                    dir_sum += (p2[0] - p1[0]) * (p2[1] + p1[1])
-                backface_cull = dir_sum < 0
-
-
-                rt = None
-                if obj.color is None:
-                    if backface_cull:
-                        pass
-                    else:
-                        rt = RenderableTriangle(poly_points, (obj.face_color[idx], obj.face_color[idx], obj.face_color[idx]))
-                else:
-                    if not backface_cull:
-                        rt = RenderableTriangle(poly_points, (obj.color[idx], obj.color[idx], obj.color[idx]))
-                        
-                if rt is not None:
-                    self.renderables.append(rt)
-        elif isinstance(obj, Line3d):
-            obj_mod_vtx = obj.vertices
-            
-            poly_points = []
-            colors = obj.vertex_color
-            for vertex in obj_mod_vtx:
-                poly_points.append(tpf(vertex))
-            
-            if colors is None:
-                colors = []
-                for vertex in obj_mod_vtx:
-                    colors.append(obj.color)
-            
-            rl = RenderableLine(poly_points, 
-                                colors, 
-                                stroke_width = obj.stroke_width, 
-                                start_arrow = obj.start_arrow, 
-                                end_arrow = obj.end_arrow,
-                                screen_space_displace = obj.screen_space_displace)
-            
-            self.renderables.append(rl)
-        elif isinstance(obj, Text3d):
-            obj.apply_tpf(tpf)
-            self.renderables.append(obj)
-        else:
-            raise RuntimeException("Not a valid drawable type, must be one of: [Object3d, Line3d, Text3d]")
+    def draw(self, obj: Union[Object3d, Line3d, Text3d]):
+        obj.apply_tpf(self.camera_context.transform_point)
+        self.renderables.append(obj)
     
     def to_drawsvg_obj(self):
         d = draw.Drawing(self.width, self.height, origin='center')
-        
-        self.renderables.sort(key=lambda x: x.min_cam_dist, reverse=True)
-        
+
+        components = []
         for renderable in self.renderables:
-            if isinstance(renderable, RenderableTriangle):
-                tri = renderable
-                d.append(draw.Lines(
-                            tri.tri_points[0][0][0], tri.tri_points[0][0][1],
-                            tri.tri_points[1][0][0], tri.tri_points[1][0][1],
-                            tri.tri_points[2][0][0], tri.tri_points[2][0][1],
-                            close=True,
-                            fill="#{:02X}{:02X}{:02X}".format(*tri.colors[0]),
-                            stroke='none'))
-            elif isinstance(renderable, RenderableLine):
-                pts = []
-                for point in renderable.line_points:
-                    pts.append(point[0][0] + renderable.screen_space_displace[0])
-                    pts.append(point[0][1] + renderable.screen_space_displace[1])
-                d.append(draw.Lines(*pts,
-                            close=False,
-                            stroke="#{:02X}{:02X}{:02X}".format(*renderable.colors[0]),
-                            stroke_width=renderable.stroke_width,
-                            stroke_linecap='round',
-                            fill='none'))
-                if renderable.end_arrow > 0:
-                    end_pt = [pts[-2], pts[-1]]
-                    end_vec = [pts[-2] - pts[-4], pts[-1] - pts[-3]]
-                    vec_len = math.sqrt((end_vec[0]**2) + (end_vec[1]**2))
-                    end_perp_vec = [end_vec[1]/vec_len/2, -end_vec[0]/vec_len/2]
-                    end_vec = [end_vec[0]/vec_len, end_vec[1]/vec_len]
-                    end_lhs = [end_pt[0] + ((end_perp_vec[0] - end_vec[0]) * renderable.end_arrow), end_pt[1] + ((end_perp_vec[1] - end_vec[1]) * renderable.end_arrow)]
-                    end_rhs = [end_pt[0] + (-(end_perp_vec[0] + end_vec[0]) * renderable.end_arrow), end_pt[1] + (-(end_perp_vec[1] + end_vec[1]) * renderable.end_arrow)]
-                    d.append(draw.Lines(*end_pt, *end_rhs, *end_lhs,
-                            close=True,
-                            stroke="#{:02X}{:02X}{:02X}".format(*renderable.colors[0]),
-                            stroke_width=renderable.stroke_width,
-                            stroke_linecap='round',
-                            fill='none'))
-            elif isinstance(renderable, Text3d):
-                d.append(renderable.get_svg_components())
-            
+            components += renderable.get_svg_components()
+
+        components.sort(key=lambda x: x[1], reverse=True)
+
+        for component in components:
+            d.append(component[0])
             
         return d
     
