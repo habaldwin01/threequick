@@ -1,1 +1,2 @@
-from .threequick import CameraContext, Object3d, Line3d, Text3d, Cube, Sphere, Ellipsoid
+from .renderer import CameraContext, Object3d, Line3d, Text3d
+from .objects import Cube, Sphere, Ellipsoid

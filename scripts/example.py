@@ -129,7 +129,7 @@ while not done:
             
             
     svg_drawing = camera_context.surface.to_drawsvg_obj()
-    svg_drawing.save_svg("frame.svg")
+    #svg_drawing.save_svg("frame.svg") # Uncomment to save the output
     
     raster = svg_drawing.rasterize()
     binary_buffer = BytesIO(raster.png_data)
